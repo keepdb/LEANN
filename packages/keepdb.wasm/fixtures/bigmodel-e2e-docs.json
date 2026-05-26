@@ -1,0 +1,18 @@
+[
+  {
+    "id": "doc-wasm",
+    "text": "WebAssembly lets a JavaScript application run a compiled search engine locally in the browser or in Node.js."
+  },
+  {
+    "id": "doc-bigmodel",
+    "text": "BigModel embedding-3 converts natural language text into dense vectors that can be used for semantic retrieval."
+  },
+  {
+    "id": "doc-leann",
+    "text": "LEANN stores a lightweight vector index and passage files so applications can search documents efficiently."
+  },
+  {
+    "id": "doc-weather",
+    "text": "A weather report describes temperature, humidity, wind speed, and rainfall for a city."
+  }
+]

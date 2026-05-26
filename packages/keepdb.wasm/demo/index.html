@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@keepdb/leann-wasm</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <strong>@keepdb/leann-wasm</strong>
+      </div>
+      <div class="status" id="runtime-status">连接中</div>
+    </header>
+    <main class="workspace">
+      <section class="search-pane">
+        <div class="pane-header">
+          <h1>语义检索</h1>
+          <span class="model-tag">embedding-3</span>
+        </div>
+        <form class="query-form" id="query-form">
+          <div class="credential-block">
+            <div class="field-header">
+              <label for="api-key">BigModel API Key</label>
+              <span>仅当前页面使用</span>
+            </div>
+            <div class="credential-row">
+              <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="输入 API Key" spellcheck="false">
+              <button type="button" id="toggle-key" class="secondary-button" aria-label="显示 API Key">显示</button>
+            </div>
+          </div>
+          <label for="query">查询</label>
+          <div class="query-row">
+            <input id="query" name="query" value="How can JavaScript use WebAssembly to run local vector search?" autocomplete="off">
+            <button type="submit" id="search-button" disabled>检索</button>
+          </div>
+        </form>
+        <div class="result-toolbar">
+          <span>结果</span>
+          <output id="latency"></output>
+        </div>
+        <div class="results" id="results" aria-live="polite"></div>
+      </section>
+      <aside class="index-pane">
+        <h2>索引</h2>
+        <dl class="meta-list">
+          <div><dt>Backend</dt><dd id="meta-backend">-</dd></div>
+          <div><dt>Dimension</dt><dd id="meta-dimension">-</dd></div>
+          <div><dt>Metric</dt><dd id="meta-metric">-</dd></div>
+          <div><dt>Runtime</dt><dd id="meta-runtime">-</dd></div>
+        </dl>
+        <h2 class="documents-title">Documents</h2>
+        <div id="documents" class="documents"></div>
+      </aside>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
