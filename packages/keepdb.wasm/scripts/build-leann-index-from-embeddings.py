@@ -35,6 +35,7 @@ def main() -> int:
         import leann_backend_ivf  # noqa: F401
     elif backend == "hnsw":
         import leann_backend_hnsw  # noqa: F401
+
         try:
             from leann_backend_hnsw import faiss as _hnsw_faiss  # noqa: F401
         except ImportError as exc:

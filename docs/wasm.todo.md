@@ -83,10 +83,10 @@ LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
 
  1. checkout
    - 使用 `actions/checkout`
-   - 当前 flat search PoC 不需要 submodule；切换到 HNSW/Faiss 后再启用 `submodules: recursive`
+   - M3 HNSW/Faiss 验证需要 `submodules: recursive`
 2. setup
    - 安装 Emscripten SDK
-   - 当前 flat search PoC 不需要 CMake/Ninja；切换到 HNSW/Faiss 后再安装
+   - M3 HNSW/Faiss 验证需要 CMake/Ninja 和 LEANN HNSW native build 依赖
    - 不安装项目完整 Python runtime，除非需要生成 fixture
 3. build
    - 编译真实 flat vector search WASM core
@@ -105,7 +105,7 @@ LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
 
 ## 目录建议
 
-已新增 PoC 目录：
+已新增专用验证目录：
 
 ```text
 packages/keepdb.wasm/

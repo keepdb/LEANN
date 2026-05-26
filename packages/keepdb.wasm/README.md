@@ -1,8 +1,14 @@
-# @keepdb/leann-wasm PoC
+# @keepdb/leann-wasm
 
-这是 `@keepdb/leann-wasm` 的 PoC 目录，用于先验证 JS@ES6 对外 API、embedding provider 配置和消费方式。
+这是 `@keepdb/leann-wasm` 的专用目录，用于封装 LEANN 索引的浏览器/Node.js WASM 搜索能力，并提供 JS@ES6 API、embedding provider 配置和端到端验证。
 
-当前 PoC 通过 WASM 执行搜索，并可读取 LEANN 真实生成的 IVF 最小索引产物。当前实现仍限定 `nlist=1`，尚未达到 LEANN HNSW/compact 后端支持；HNSW search core 属于后续 M3。
+真实状态：
+
+- M0：flat vector search WASM 仅作为 toolchain 验证，不能称为 LEANN WASM。
+- M1：已能读取 LEANN 真实生成的 IVF 最小索引产物，限定 `backend_name=ivf`、`nlist=1`、`distance_metric=cosine`。
+- M2：已接入 BigModel `embedding-3`，端到端验证 build/query 同模型同维度，`searchText()` 可用。
+- M3：已实现 non-compact/non-pruned HNSW `IHNf` parser、WASM `leann_wasm_hnsw_search()` 调用路径和 GitHub Actions 强制闸门；本地未安装 HNSW/Faiss native build 环境时不能证明 M3 完成，必须以 Actions 真实 HNSW fixture 验证结果为准。
+- M4/M5：compact/pruned index、JS callback/provider adapter、正式 npm 发布仍未完成。
 
 ## 目标
 
@@ -62,7 +68,7 @@ pnpm --dir packages/keepdb.wasm test:e2e:bigmodel
 4. 查询时再次调用 BigModel `embedding-3` 生成 query 向量。
 5. WASM 返回预期 top-1/top-k，并补齐 passage text 与 metadata。
 
-当前 M1 读取器的范围是 LEANN IVF 最小索引：`nlist=1`、`distance_metric=cosine`。HNSW/Faiss 完整后端支持属于后续 M3。
+当前 M1 读取器的范围是 LEANN IVF 最小索引：`nlist=1`、`distance_metric=cosine`。M3 的 HNSW/Faiss 支持必须通过 GitHub Actions 中的真实 HNSW fixture 验证后才算完成。
 
 ## 浏览器示例页
 
@@ -74,7 +80,7 @@ pnpm --dir packages/keepdb.wasm demo
 
 示例预览进程只托管 ES module、真实 `.wasm` 和 `.tmp/bigmodel-e2e/` 下的 LEANN 索引文件；它会通过 `npx @keepdb/cli port` 获取本地端口。页面允许输入 BigModel API Key，并由浏览器直接请求 `https://open.bigmodel.cn/api/paas/v4/embeddings` 的 `embedding-3`。Key 只保存在当前页面内存，不读取 `.env`、不发给本地预览进程。
 
-该直连方式适合本地 PoC 验证。正式应用不应要求终端用户在浏览器提供长期凭据；应改用 `remote` provider 配合受控后端或边缘函数。
+该直连方式适合本地验证。正式应用不应要求终端用户在浏览器提供长期凭据；应改用 `remote` provider 配合受控后端或边缘函数。
 
 ## GitHub Actions 定向打包
 
@@ -106,7 +112,7 @@ pnpm --dir packages/keepdb.wasm demo
 9. 执行 `pnpm pack`。
 10. 上传 `keepdb-leann-wasm-package` artifact。
 
-当前产物是 PoC npm tarball，包含 ES6 wrapper、LEANN IVF `nlist=1` 最小 `.index` 读取器，以及 WASM search core。CI 的 Emscripten 构建会导出 `leann_wasm_flat_search` 和 `leann_wasm_hnsw_search`；本地 `wat2wasm` fallback 仍只覆盖 flat search，用于不安装打包环境时的基础验证。
+当前 Actions 产物是 M3 validation npm tarball，包含 ES6 wrapper、LEANN IVF `nlist=1` 最小 `.index` 读取器、non-compact/non-pruned HNSW parser，以及 WASM search core。CI 的 Emscripten 构建会导出 `leann_wasm_flat_search` 和 `leann_wasm_hnsw_search`；本地 `wat2wasm` fallback 仍只覆盖 flat search，用于不安装打包环境时的基础验证。
 
 M3 方案见：
 
@@ -207,8 +213,8 @@ const index = await loadLeannIndex({
 
 ## 当前实现边界
 
-- `vectors` 是 PoC mock 数据，用来验证 API，不代表真实索引格式。
-- `indexBytes` 和 `idsText` 参数已预留，当前 mock core 不解析真实 LEANN HNSW index。
+- `vectors` 是 mock/测试数据入口，用来验证 API，不代表真实索引格式。
+- `indexBytes`、`metaJson`、`idsText`、`passagesJsonl` 是真实 LEANN sidecar/index 入口；当前支持 IVF `nlist=1` 和 non-compact/non-pruned HNSW reader。
 - `embeddingProvider.type = "openai-compatible"` 会调用 `${baseUrl}/embeddings`。
 - `embeddingProvider.type = "remote"` 会调用自有 endpoint，适合浏览器。
 - `embeddingProvider.type = "custom"` 允许传入 `embed(text)` 函数做测试。

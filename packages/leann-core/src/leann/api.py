@@ -12,7 +12,6 @@ import subprocess
 import time
 import warnings
 from abc import ABC, abstractmethod
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
@@ -314,6 +313,7 @@ class BM25Scorer(BM25Index):
         self.avg_doc_length = None
         self.corpus_size = None
         self.idlist = set()  # List of all document IDs for easier searching
+
 
 class Fts5BM25Index(BM25Index):
     """BM25 over a SQLite FTS5 virtual table, persisted on disk.

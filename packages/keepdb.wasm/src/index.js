@@ -5,7 +5,7 @@ import { createWasmSearchCore } from "./wasm-search-core.js";
 import { parseLeannIndex } from "./leann-index-parser.js";
 import { parseLeannSidecars } from "./leann-sidecars.js";
 
-export const version = "0.0.0-poc";
+export const version = "0.0.0-m3";
 
 export async function loadLeannIndex(options = {}) {
   const {

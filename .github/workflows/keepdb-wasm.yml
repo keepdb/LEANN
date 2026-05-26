@@ -18,8 +18,10 @@ on:
 
 jobs:
   package:
-    name: Package @keepdb/leann-wasm PoC
+    name: Package @keepdb/leann-wasm M3 validation
     runs-on: ubuntu-latest
+    env:
+      BIGMODEL_API_KEY: ${{ secrets.BIGMODEL_API_KEY }}
     defaults:
       run:
         shell: bash
@@ -119,9 +121,8 @@ jobs:
           if-no-files-found: error
 
       - name: Run BigModel LEANN e2e
-        if: ${{ secrets.BIGMODEL_API_KEY != '' }}
+        if: ${{ env.BIGMODEL_API_KEY != '' }}
         env:
-          BIGMODEL_API_KEY: ${{ secrets.BIGMODEL_API_KEY }}
           BIGMODEL_BASE_URL: https://open.bigmodel.cn/api/paas/v4
           BIGMODEL_EMBEDDING_MODEL: embedding-3
           BIGMODEL_EMBEDDING_DIMENSIONS: "1024"

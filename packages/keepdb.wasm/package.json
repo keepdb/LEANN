@@ -1,10 +1,10 @@
 {
   "name": "@keepdb/leann-wasm",
-  "version": "0.0.0-poc",
+  "version": "0.0.0-m3",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.12.1",
-  "description": "PoC ES6 wrapper for LEANN WASM search with pluggable embedding providers.",
+  "description": "ES6 wrapper for LEANN WASM search with pluggable embedding providers.",
   "exports": {
     ".": "./src/index.js"
   },

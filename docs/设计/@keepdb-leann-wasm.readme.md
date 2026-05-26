@@ -142,7 +142,7 @@ const query = await embedWithBigModel("要查询的问题", {
 const results = index.search({ query, topK: 10 });
 ```
 
-本地 PoC 示例页可以由验证者临时输入 BigModel API Key，并在浏览器内直接调用 BigModel；Key 仅保存在当前页面内存中。正式应用不建议要求用户在浏览器提供长期 API Key，推荐通过自己的后端、边缘函数或受控代理生成 query embedding。
+本地验证示例页可以由验证者临时输入 BigModel API Key，并在浏览器内直接调用 BigModel；Key 仅保存在当前页面内存中。正式应用不建议要求用户在浏览器提供长期 API Key，推荐通过自己的后端、边缘函数或受控代理生成 query embedding。
 
 ## 包含什么
 
