@@ -250,7 +250,7 @@ index.searchText(text)
 1. 服务端或边缘运行时使用 provider config，直接调用 `searchText()`。
 2. 浏览器使用 `embeddingProvider.type = "remote"`，把文本发给自己的受控 API，由后端持有 BigModel API Key。
 
-用于真实链路验收的本地示例页可额外提供临时 Key 输入框，以确认浏览器、BigModel、真实 LEANN 索引与 WASM 的组合行为；该方式不是生产鉴权方案。
+用于 JS-only 链路验收的本地示例页可额外提供临时 Key 输入框，以确认浏览器、BigModel、IVF 兼容 fixture 与 WASM 的组合行为；真实 LEANN HNSW fixture 的消费由 GitHub Actions 验证。该方式不是生产鉴权方案。
 
 浏览器远程代理示例：
 
@@ -479,6 +479,7 @@ run `26465439258` 已完成上述流程，真实 HNSW fixture 查询返回 `top1
 ## 设计原则
 
 - JS API 保持 ES6 原生模块风格。
+- `package.json` 使用 `"type": "module"`；包内脚本和测试禁止 Python、`uv` 与 shell build 脚本。
 - WASM 只承载搜索内核，不承载模型推理。
 - 输入输出使用 `ArrayBuffer`、`Uint8Array`、`Float32Array` 等浏览器原生结构。
 - 默认路径适合浏览器，Node.js 只是额外运行环境。

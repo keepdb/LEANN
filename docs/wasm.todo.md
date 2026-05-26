@@ -80,6 +80,7 @@ LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
 
 - `workflow_dispatch`
 - `pull_request`，仅当改动命中 WASM 相关路径时运行
+  - 包含 `packages/keepdb.wasm/**` 与 `.github/scripts/keepdb-wasm/**`
 
 建议 job：
 
@@ -121,8 +122,9 @@ packages/keepdb.wasm/
   wasm/
     leann_wasm.c
   scripts/
-    build-wasm.sh
+    build-wasm.mjs
   tests/
+    js-only-guard.mjs
     smoke.mjs
     wasm-smoke.mjs
 ```
@@ -153,7 +155,7 @@ packages/keepdb.wasm/
 
 - [x] 新增 `.github/workflows/keepdb-wasm.yml`。
 - [x] 在 GitHub Actions 中安装 Emscripten SDK。
-- [x] 新增 `packages/keepdb.wasm/scripts/build-wasm.sh`，编译真实 flat search WASM core。
+- [x] 新增 `packages/keepdb.wasm/scripts/build-wasm.mjs`，用 JS@ES6 编排 WASM 构建。
 - [x] 新增 Node.js smoke test，验证 WASM 可以加载并完成一次 top-k 搜索。
 - [x] 上传 npm tarball artifact，其中包含 `dist/leann-wasm.wasm`。
 - [x] 新增真实 LEANN HNSW index reader/searcher 路径；flat search 仅继续保留为 M0 toolchain 测试。
@@ -178,7 +180,7 @@ packages/keepdb.wasm/
   - 读取文件：`.meta.json`、`.index`、`.ids.txt`、`.passages.jsonl`。
 - [x] M2：接入 BigModel `embedding-3` 做文档向量化和 query 向量化。
   - 当前测试：`pnpm --dir packages/keepdb.wasm test:e2e:bigmodel`。
-  - 测试结果：预期 `top1=doc-wasm`，WASM 返回 `doc-wasm`。
+  - JS-only 测试结果：ES6 helper 写出 IVF `nlist=1` 兼容 fixture；查询预期 `top1=doc-wasm`，WASM 返回 `doc-wasm`。该测试不宣称 fixture 由原生 LEANN builder 生成。
   - 示例页：`packages/keepdb.wasm/demo/` 通过 `npx @keepdb/cli port` 启动静态预览，验证者在浏览器输入临时 BigModel API Key 后直连 `/embeddings`，本地预览进程不读取或转发 Key。
 - [x] M3 子集：支持 LEANN HNSW/Faiss 后端生成的 `non-compact/non-pruned` 索引，不再局限 IVF `nlist=1` 最小 reader。
   - M3 方案文档：`docs/设计/leann-wasm-m3-hnsw.md`。
@@ -189,8 +191,9 @@ packages/keepdb.wasm/
 ### P3：扩展能力
 
 - [x] 新增 M3 HNSW capability 探针：`pnpm --dir packages/keepdb.wasm test:hnsw-capability`。
-  - 本地无 `leann_backend_hnsw.faiss` 原生扩展时只报告 `missing-hnsw-native-extension`，不伪装成 HNSW WASM 已完成。
-  - GitHub Actions 通过 `LEANN_WASM_REQUIRE_HNSW=1` 把 HNSW fixture 生成变成强制闸门。
+  - 本地无真实 HNSW fixture 时只报告 `missing-hnsw-fixture`，不伪装成 HNSW WASM 已完成。
+  - GitHub Actions 通过仓库级 helper 生成真实 HNSW fixture，再用 `LEANN_WASM_REQUIRE_HNSW=1` 把 fixture 消费与搜索变成强制闸门。
+- [x] `packages/keepdb.wasm` 包内禁止 Python：`package.json` 保持 `"type": "module"`，`build:wasm` 改为 `node scripts/build-wasm.mjs`，`pnpm test` 会运行 `tests/js-only-guard.mjs` 检查包内没有 `.py` / `.sh` 文件，也没有脚本调用 Python 或 `uv`。
 - [x] 新增 HNSW parser smoke：`pnpm --dir packages/keepdb.wasm test:hnsw-parser`。
 - [x] 新增 HNSW WASM smoke：`pnpm --dir packages/keepdb.wasm test:hnsw-wasm`。
   - 本地 `wat2wasm` fallback 无 HNSW 导出时跳过。

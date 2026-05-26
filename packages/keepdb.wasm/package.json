@@ -9,9 +9,10 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "build:wasm": "bash scripts/build-wasm.sh",
+    "build:wasm": "node scripts/build-wasm.mjs",
     "demo": "node demo/server.mjs",
-    "test": "node tests/smoke.mjs",
+    "test": "node tests/js-only-guard.mjs && node tests/smoke.mjs",
+    "test:js-only": "node tests/js-only-guard.mjs",
     "test:wasm": "node tests/wasm-smoke.mjs",
     "test:hnsw-parser": "node tests/hnsw-parser-smoke.mjs",
     "test:hnsw-wasm": "node tests/hnsw-wasm-smoke.mjs",

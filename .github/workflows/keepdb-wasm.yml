@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/keepdb-wasm.yml"
+      - ".github/scripts/keepdb-wasm/**"
       - "packages/keepdb.wasm/**"
       - "docs/wasm.todo.md"
       - "docs/设计/**"
@@ -12,6 +13,7 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/keepdb-wasm.yml"
+      - ".github/scripts/keepdb-wasm/**"
       - "packages/keepdb.wasm/**"
       - "docs/wasm.todo.md"
       - "docs/设计/**"
@@ -108,10 +110,21 @@ jobs:
           uv pip install --python .venv-keepdb-hnsw/bin/python --no-deps -e packages/leann-backend-hnsw
 
       - name: Probe LEANN HNSW native fixture generation
+        working-directory: .
         env:
           LEANN_WASM_REQUIRE_HNSW: "1"
-          LEANN_WASM_PYTHON: ../../.venv-keepdb-hnsw/bin/python
-        run: pnpm test:hnsw-capability
+          LEANN_WASM_E2E_BACKEND: hnsw
+          BIGMODEL_EMBEDDING_MODEL: embedding-3
+          BIGMODEL_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+          BIGMODEL_API_KEY: not-used-for-precomputed-embeddings
+        run: |
+          pnpm --dir packages/keepdb.wasm exec node tests/write-hnsw-fixture-input.mjs
+          .venv-keepdb-hnsw/bin/python \
+            .github/scripts/keepdb-wasm/build-leann-index-from-embeddings.py \
+            packages/keepdb.wasm/.tmp/hnsw-capability/docs-embeddings.json \
+            packages/keepdb.wasm/.tmp/hnsw-capability \
+            hnsw-capability.leann
+          pnpm --dir packages/keepdb.wasm test:hnsw-capability
 
       - name: Upload HNSW fixture artifact
         uses: actions/upload-artifact@v4

@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 
 import { loadLeannIndex } from "../src/index.js";
+import { writeIvfNlistOneArtifacts } from "./leann-fixture-utils.mjs";
 
-const rootUrl = new URL("..", import.meta.url);
 const envPath = new URL("../.env", import.meta.url);
 loadDotEnv(envPath);
 
@@ -39,37 +38,15 @@ await writeFile(
   JSON.stringify({ documents: docs, embeddings: docEmbeddings }, null, 2),
 );
 
-console.log("Generating real LEANN index artifacts...");
-const pythonPath = [
-  new URL("../leann-core/src", rootUrl).pathname,
-  new URL("../leann-backend-ivf", rootUrl).pathname,
-  new URL("../leann-backend-hnsw", rootUrl).pathname,
-  process.env.PYTHONPATH || "",
-].filter(Boolean).join(":");
-const pythonCommand = buildPythonCommand();
-
-const build = spawnSync(
-  pythonCommand.command,
-  [
-    ...pythonCommand.args,
-    new URL("../scripts/build-leann-index-from-embeddings.py", import.meta.url).pathname,
-    new URL("docs-embeddings.json", tmpDir).pathname,
-    tmpDir.pathname,
-    "bigmodel.leann",
-  ],
-  {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      PYTHONPATH: pythonPath,
-      BIGMODEL_API_KEY: apiKey,
-      BIGMODEL_BASE_URL: baseUrl,
-      BIGMODEL_EMBEDDING_MODEL: model,
-    },
-  },
-);
-
-assert.equal(build.status, 0, "LEANN index generation failed");
+console.log("Generating JS-only LEANN IVF nlist=1 fixture artifacts...");
+await writeIvfNlistOneArtifacts({
+  outputUrl: tmpDir,
+  indexName: "bigmodel.leann",
+  documents: docs,
+  embeddings: docEmbeddings,
+  embeddingModel: model,
+  baseUrl,
+});
 
 const metaJson = await readFile(new URL("bigmodel.leann.meta.json", tmpDir), "utf8");
 const indexBytes = await readFile(new URL("bigmodel.index", tmpDir));
@@ -84,7 +61,7 @@ const [queryEmbedding] = await embedWithBigModel([queryText], {
   dimensions,
 });
 
-console.log("Loading real LEANN artifacts through @keepdb/leann-wasm...");
+console.log("Loading JS-generated LEANN-compatible IVF artifacts through @keepdb/leann-wasm...");
 const wasmPath = new URL("../dist/leann-wasm.wasm", import.meta.url);
 if (!existsSync(wasmPath)) {
   throw new Error("dist/leann-wasm.wasm missing. Run `pnpm --dir packages/keepdb.wasm build:wasm` first.");
@@ -158,42 +135,4 @@ function optionalInt(value) {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function buildPythonCommand() {
-  if (process.env.LEANN_WASM_PYTHON) {
-    return { command: process.env.LEANN_WASM_PYTHON, args: [] };
-  }
-
-  return {
-    command: "uv",
-    args: [
-      "run",
-      "--no-project",
-      "--python",
-      "3.11",
-      "--with",
-      "numpy",
-      "--with",
-      "faiss-cpu",
-      "--with",
-      "tqdm",
-      "--with",
-      "psutil",
-      "--with",
-      "pyzmq",
-      "--with",
-      "msgpack",
-      "--with",
-      "openai",
-      "--with",
-      "python-dotenv",
-      "--with",
-      "tiktoken",
-      "--with",
-      "requests",
-      "--with",
-      "torch",
-    ],
-  };
 }

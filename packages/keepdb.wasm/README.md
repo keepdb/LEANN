@@ -32,7 +32,7 @@ node packages/keepdb.wasm/tests/smoke.mjs
 keepdb.wasm smoke passed
 ```
 
-## BigModel + LEANN 真实索引端到端验证
+## BigModel + JS-only IVF 兼容 fixture 验证
 
 准备本地配置：
 
@@ -59,26 +59,26 @@ pnpm --dir packages/keepdb.wasm test:e2e:bigmodel
 这条测试会执行完整链路：
 
 1. 调用 BigModel `/embeddings` 的 `embedding-3` 生成公开小样本文档向量。
-2. 用 LEANN `build_index_from_arrays()` 生成真实索引产物：
+2. 用 JS@ES6 写出当前 M1 reader 支持的 LEANN IVF `nlist=1` 兼容 fixture：
    - `.meta.json`
    - `.index`
    - `.ids.txt`
    - `.passages.jsonl`
-3. `@keepdb/leann-wasm` 读取真实 LEANN IVF `.index`。
+3. `@keepdb/leann-wasm` 读取该 IVF 兼容 `.index`。
 4. 查询时再次调用 BigModel `embedding-3` 生成 query 向量。
 5. WASM 返回预期 top-1/top-k，并补齐 passage text 与 metadata。
 
-M1 的 IVF 读取器范围是 `nlist=1`、`distance_metric=cosine`。此外，M3 已验证由 LEANN HNSW/Faiss 后端生成的 `non-compact/non-pruned` 索引读取与 HNSW graph traversal 查询；compact/pruned 索引仍不在支持范围内。
+这一命令证明 JS package 不依赖 Python 即可串通 BigModel provider、sidecar、IVF 最小格式 reader 与 WASM 查询；它不证明本轮索引由原生 LEANN builder 生成。真实 LEANN 索引消费证据来自 M3 Actions：已验证由 LEANN HNSW/Faiss 后端生成的 `non-compact/non-pruned` 索引读取与 HNSW graph traversal 查询。compact/pruned 索引仍不在支持范围内。
 
 ## 浏览器示例页
 
-在完成上述 E2E 命令、生成真实测试索引后运行：
+在完成上述 E2E 命令、生成 JS-only IVF 兼容 fixture 后运行：
 
 ```bash
 pnpm --dir packages/keepdb.wasm demo
 ```
 
-示例预览进程只托管 ES module、真实 `.wasm` 和 `.tmp/bigmodel-e2e/` 下的 LEANN 索引文件；它会通过 `npx @keepdb/cli port` 获取本地端口。页面允许输入 BigModel API Key，并由浏览器直接请求 `https://open.bigmodel.cn/api/paas/v4/embeddings` 的 `embedding-3`。Key 只保存在当前页面内存，不读取 `.env`、不发给本地预览进程。
+示例预览进程只托管 ES module、真实 `.wasm` 和 `.tmp/bigmodel-e2e/` 下的 IVF 兼容 fixture；它会通过 `npx @keepdb/cli port` 获取本地端口。页面允许输入 BigModel API Key，并由浏览器直接请求 `https://open.bigmodel.cn/api/paas/v4/embeddings` 的 `embedding-3`。Key 只保存在当前页面内存，不读取 `.env`、不发给本地预览进程。
 
 该直连方式适合本地验证。正式应用不应要求终端用户在浏览器提供长期凭据；应改用 `remote` provider 配合受控后端或边缘函数。
 
@@ -95,6 +95,7 @@ pnpm --dir packages/keepdb.wasm demo
 - 手动触发：`workflow_dispatch`
 - PR 或 push 命中以下路径：
   - `packages/keepdb.wasm/**`
+  - `.github/scripts/keepdb-wasm/**`
   - `docs/wasm.todo.md`
   - `docs/设计/**`
   - `.github/workflows/keepdb-wasm.yml`
@@ -104,11 +105,11 @@ pnpm --dir packages/keepdb.wasm demo
 1. checkout 源码。
 2. 使用 Node.js 20。
 3. 启用 `pnpm@10.12.1`。
-4. 运行 `pnpm test`。
+4. 运行 `pnpm test`，其中 `tests/js-only-guard.mjs` 会确认包内无 Python 文件、无 shell build 脚本、无 Python/`uv` 调用。
 5. 安装 Emscripten SDK。
 6. 执行 `pnpm build:wasm` 生成 `dist/leann-wasm.wasm`。
 7. 运行 `pnpm test:wasm`。
-8. 构建 LEANN HNSW 原生扩展并运行 `pnpm test:hnsw-capability`，作为 M3 的 HNSW fixture 闸门。
+8. 在仓库级 CI helper 中构建 LEANN HNSW 原生扩展并生成真实 fixture，再运行 `pnpm test:hnsw-capability`，作为 M3 的 HNSW fixture 消费闸门。
 9. 执行 `pnpm pack`。
 10. 上传 `keepdb-leann-wasm-package`、`keepdb-leann-wasm-binary` 和 `keepdb-leann-hnsw-fixture` artifacts。
 
@@ -128,7 +129,7 @@ pnpm --dir packages/keepdb.wasm test:hnsw-wasm
 pnpm --dir packages/keepdb.wasm test:hnsw-capability
 ```
 
-`test:hnsw-parser` 使用合成二进制验证 `IHNf` non-compact parser。`test:hnsw-wasm` 在当前 `.wasm` 导出 `leann_wasm_hnsw_search` 时验证 HNSW WASM search；本地 fallback 产物没有该导出时会跳过。`test:hnsw-capability` 如果输出 `missing-hnsw-native-extension`，表示本机缺少 `leann_backend_hnsw.faiss` 原生扩展；这不是 M3 通过，只是明确阻塞。GitHub Actions 中会设置 `LEANN_WASM_REQUIRE_HNSW=1`，必须真实生成 HNSW fixture，并通过 WASM `leann_wasm_hnsw_search()` 返回 `top1=doc-wasm` 才算通过。
+`test:hnsw-parser` 使用合成二进制验证 `IHNf` non-compact parser。`test:hnsw-wasm` 在当前 `.wasm` 导出 `leann_wasm_hnsw_search` 时验证 HNSW WASM search；本地 fallback 产物没有该导出时会跳过。`test:hnsw-capability` 如果输出 `missing-hnsw-fixture`，表示本机没有准备真实 HNSW fixture；这不是 M3 通过，只是明确阻塞。GitHub Actions 中会设置 `LEANN_WASM_REQUIRE_HNSW=1`，先通过仓库级 helper 真实生成 HNSW fixture，再要求 WASM `leann_wasm_hnsw_search()` 返回 `top1=doc-wasm` 才算通过。
 
 上述 CI 闸门已在 run `26465439258` 通过。该 run 的 BigModel E2E 步骤因为仓库没有配置 `BIGMODEL_API_KEY` secret 而跳过；本地通过 `.env` 执行 `pnpm --dir packages/keepdb.wasm test:e2e:bigmodel` 已验证 BigModel `embedding-3` 的 build/query 链路。
 
@@ -229,6 +230,12 @@ LEANN `non-compact/non-pruned` HNSW 内核已通过 `src/leann-index-parser.js` 
 
 ```text
 wasm/leann_wasm.c
+```
+
+包内构建脚本是 JS@ES6：
+
+```text
+scripts/build-wasm.mjs
 ```
 
 它导出：

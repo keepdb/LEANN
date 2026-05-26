@@ -14,10 +14,10 @@ M3 的 `non-compact/non-pruned` HNSW 子集已完成真实验证。GitHub Action
 本机探针结果是：
 
 ```text
-missing-hnsw-native-extension
+missing-hnsw-fixture
 ```
 
-原因是本机没有 `leann_backend_hnsw.faiss` 原生扩展。按照用户约束，本机不安装 HNSW/Faiss 打包环境，因此 HNSW fixture 生成必须放到 GitHub Actions。
+原因是 `packages/keepdb.wasm` 作为 npm/ES6 包已经禁止 Python 与 `uv` 调用；本机不安装 HNSW/Faiss 打包环境时，包内测试只消费已有 fixture，不再尝试生成 fixture。因此真实 HNSW fixture 生成必须放到 GitHub Actions 的仓库级 helper。
 
 该结论仅覆盖非 compact、非 pruned 的全量向量 HNSW 路径。compact/pruned index 和依赖 selective recomputation 的 ZMQ 替代方案仍属于 M4，不能声称完整 LEANN WASM 已封装完成。
 
@@ -67,7 +67,7 @@ LEANN HNSW 默认的 compact/pruned 模式依赖 selective recomputation。当�
 pnpm --dir packages/keepdb.wasm test:hnsw-capability
 ```
 
-本地没有原生扩展时输出 `missing-hnsw-native-extension` 并退出 0，避免误伤不安装打包环境的开发机。
+本地没有真实 HNSW fixture 时输出 `missing-hnsw-fixture` 并退出 0，避免误伤不安装打包环境的开发机。
 
 CI 命令：
 
@@ -100,7 +100,7 @@ Actions run `26465439258` 中，`test:hnsw-capability` 已执行：
 4. 在 CI 里 editable 安装：
    - `packages/leann-core`
    - `packages/leann-backend-hnsw`
-5. 运行 `test:hnsw-capability`，生成真实 HNSW fixture。
+5. 用仓库级 helper 生成真实 HNSW fixture，然后运行 `test:hnsw-capability` 只负责读取和搜索 fixture。
 
 Actions 成功后上传：
 
