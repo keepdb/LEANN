@@ -1,0 +1,29 @@
+{
+  "name": "@keepdb/leann-wasm",
+  "version": "0.0.0-poc",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.12.1",
+  "description": "PoC ES6 wrapper for LEANN WASM search with pluggable embedding providers.",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "demo": "node demo/server.mjs",
+    "test": "node tests/smoke.mjs",
+    "test:wasm": "node tests/wasm-smoke.mjs",
+    "test:hnsw-parser": "node tests/hnsw-parser-smoke.mjs",
+    "test:hnsw-wasm": "node tests/hnsw-wasm-smoke.mjs",
+    "test:hnsw-capability": "node tests/hnsw-capability.mjs",
+    "test:e2e:bigmodel": "node tests/bigmodel-leann-e2e.mjs"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

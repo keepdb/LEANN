@@ -1,0 +1,147 @@
+name: keepdb.wasm package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/keepdb-wasm.yml"
+      - "packages/keepdb.wasm/**"
+      - "docs/wasm.todo.md"
+      - "docs/设计/**"
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/keepdb-wasm.yml"
+      - "packages/keepdb.wasm/**"
+      - "docs/wasm.todo.md"
+      - "docs/设计/**"
+
+jobs:
+  package:
+    name: Package @keepdb/leann-wasm PoC
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/keepdb.wasm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.1 --activate
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Verify package metadata
+        run: |
+          node -e "const pkg = require('./package.json'); if (pkg.name !== '@keepdb/leann-wasm') process.exit(1); console.log(pkg.name, pkg.version)"
+
+      - name: Run smoke test
+        run: pnpm test
+
+      - name: Install Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install latest
+          "$RUNNER_TEMP/emsdk/emsdk" activate latest
+          echo "$RUNNER_TEMP/emsdk" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
+
+      - name: Build WASM artifact
+        run: pnpm build:wasm
+
+      - name: Run WASM smoke test
+        run: pnpm test:wasm
+
+      - name: Run HNSW parser smoke test
+        run: pnpm test:hnsw-parser
+
+      - name: Run HNSW WASM smoke test
+        run: pnpm test:hnsw-wasm
+
+      - name: Install LEANN HNSW native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            pkg-config \
+            swig \
+            libomp-dev \
+            libopenblas-dev \
+            liblapack-dev \
+            libboost-all-dev \
+            protobuf-compiler \
+            libprotobuf-dev \
+            libabsl-dev \
+            libzmq3-dev
+
+      - name: Build LEANN HNSW native extension for M3 probe
+        working-directory: .
+        run: |
+          uv venv .venv-keepdb-hnsw --python 3.11
+          uv pip install --python .venv-keepdb-hnsw/bin/python \
+            numpy \
+            tqdm \
+            psutil \
+            pyzmq \
+            msgpack \
+            openai \
+            python-dotenv \
+            tiktoken \
+            requests
+          uv pip install --python .venv-keepdb-hnsw/bin/python --no-deps -e packages/leann-core
+          uv pip install --python .venv-keepdb-hnsw/bin/python --no-deps -e packages/leann-backend-hnsw
+
+      - name: Probe LEANN HNSW native fixture generation
+        env:
+          LEANN_WASM_REQUIRE_HNSW: "1"
+          LEANN_WASM_PYTHON: ../../.venv-keepdb-hnsw/bin/python
+        run: pnpm test:hnsw-capability
+
+      - name: Upload HNSW fixture artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepdb-leann-hnsw-fixture
+          path: packages/keepdb.wasm/.tmp/hnsw-capability/
+          if-no-files-found: error
+
+      - name: Run BigModel LEANN e2e
+        if: ${{ secrets.BIGMODEL_API_KEY != '' }}
+        env:
+          BIGMODEL_API_KEY: ${{ secrets.BIGMODEL_API_KEY }}
+          BIGMODEL_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+          BIGMODEL_EMBEDDING_MODEL: embedding-3
+          BIGMODEL_EMBEDDING_DIMENSIONS: "1024"
+        run: pnpm test:e2e:bigmodel
+
+      - name: Pack npm artifact
+        run: |
+          mkdir -p ../../dist/keepdb-wasm
+          pnpm pack --pack-destination ../../dist/keepdb-wasm
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepdb-leann-wasm-package
+          path: dist/keepdb-wasm/*.tgz
+          if-no-files-found: error
+
+      - name: Upload raw WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepdb-leann-wasm-binary
+          path: packages/keepdb.wasm/dist/leann-wasm.wasm
+          if-no-files-found: error
