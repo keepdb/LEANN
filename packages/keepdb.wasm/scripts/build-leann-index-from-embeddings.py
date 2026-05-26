@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import site
 import sys
 import types
 from importlib import util as importlib_util
@@ -180,18 +181,22 @@ def build_hnsw_index_from_arrays(
 
 
 def load_hnsw_faiss_extension():
-    candidate_paths = []
+    candidate_package_dirs = []
     repo_root = Path(__file__).resolve().parents[3]
     search_roots = [
         repo_root / "packages" / "leann-backend-hnsw" / "leann_backend_hnsw",
-        *[Path(entry) / "leann_backend_hnsw" for entry in sys.path if entry],
     ]
-    for root in search_roots:
-        if root.exists():
-            candidate_paths.extend(root.glob("faiss*.so"))
-            candidate_paths.extend(root.glob("faiss*.pyd"))
+    for entry in sys.path:
+        if entry:
+            search_roots.append(Path(entry) / "leann_backend_hnsw")
+    for entry in site.getsitepackages():
+        search_roots.append(Path(entry) / "leann_backend_hnsw")
 
-    if not candidate_paths:
+    for root in search_roots:
+        if root.exists() and (root / "faiss.py").exists():
+            candidate_package_dirs.append(root)
+
+    if not candidate_package_dirs:
         raise RuntimeError(
             "LEANN_WASM_E2E_BACKEND=hnsw requires the native "
             "leann_backend_hnsw.faiss extension. This is expected on local "
@@ -199,14 +204,15 @@ def load_hnsw_faiss_extension():
             "fixture/build job in GitHub Actions instead."
         )
 
-    extension_path = candidate_paths[0]
+    package_dir = candidate_package_dirs[0]
+    faiss_py = package_dir / "faiss.py"
     package = types.ModuleType("leann_backend_hnsw")
-    package.__path__ = [str(extension_path.parent)]
+    package.__path__ = [str(package_dir)]
     sys.modules.setdefault("leann_backend_hnsw", package)
 
-    spec = importlib_util.spec_from_file_location("leann_backend_hnsw.faiss", extension_path)
+    spec = importlib_util.spec_from_file_location("leann_backend_hnsw.faiss", faiss_py)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load HNSW Faiss extension from {extension_path}")
+        raise RuntimeError(f"Unable to load HNSW Faiss wrapper from {faiss_py}")
     module = importlib_util.module_from_spec(spec)
     sys.modules["leann_backend_hnsw.faiss"] = module
     spec.loader.exec_module(module)
