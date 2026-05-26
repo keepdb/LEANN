@@ -6,7 +6,9 @@
 
 LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
 
-可行方向是先做一个收窄范围的 WASM MVP：只封装只读向量索引搜索内核，输入由外部提前计算好的 query embedding，输出候选 passage id 与距离分数。索引构建、文本切分、embedding 模型推理、LLM 调用、daemon、ZMQ 重算服务暂不进入 WASM 范围。
+可行方向是封装只读向量索引搜索内核：输入由外部提前计算好的 query embedding，输出候选 passage id 与距离分数。索引构建、文本切分、embedding 模型推理、LLM 调用、daemon、ZMQ 重算服务暂不进入 WASM 范围。
+
+截至 2026-05-27，M3 的 `non-compact/non-pruned` HNSW (Hierarchical Navigable Small World，LEANN 使用的图近似最近邻后端) 子集已经由 GitHub Actions 真实验证通过：CI 构建真实 `.wasm`，生成并读取 LEANN HNSW 四文件索引产物，在 WASM 内执行 HNSW graph traversal，返回 `top1=doc-wasm`。这不等于 compact/pruned LEANN 的浏览器封装已经完成；后者仍属于 M4。
 
 原因：
 
@@ -61,7 +63,7 @@ LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
 
 ### 产品条件
 
-- WASM 包的 API 必须要求调用方传入 query embedding；embedding 生成交给 JS 应用、服务端或独立模型运行时。
+- WASM 搜索内核只消费 query embedding；ES6 wrapper 可以通过可配置 `embeddingProvider` 提供 `searchText()`，embedding 计算仍在 JS 应用、服务端或独立模型运行时完成。
 - WASM 首版只保证搜索内核，不承诺完整 LEANN CLI/API 行为。
 - 索引格式需要版本标记，避免未来 native index 与 WASM reader 不兼容。
 - 对大索引必须明确内存预算；浏览器环境下不能默认加载百万级或千万级全量索引。
@@ -89,7 +91,7 @@ LEANN 当前不适合把完整 Python 包直接封装成浏览器 WASM。
    - M3 HNSW/Faiss 验证需要 CMake/Ninja 和 LEANN HNSW native build 依赖
    - 不安装项目完整 Python runtime，除非需要生成 fixture
 3. build
-   - 编译真实 flat vector search WASM core
+   - 编译包含 M0 flat search 与 M3 HNSW graph traversal 的真实 WASM core
    - 输出 `dist/leann-wasm.wasm`
 4. fixture
    - 使用已提交的小型 fixture index
@@ -129,7 +131,7 @@ packages/keepdb.wasm/
 
 - `src/index.js` 只负责收敛导出入口，不堆搜索细节。
 - `src/wasm-search-core.js` 只处理 WASM search adapter。
-- `wasm/leann_wasm.c` 当前实现真实 flat vector top-k search，后续替换为 HNSW/LEANN index search core。
+- `wasm/leann_wasm.c` 实现 M0 flat vector top-k search，并已包含 M3 `non-compact/non-pruned` HNSW graph traversal search。
 - `README.md` 说明构建方式、API、限制、验证命令和 GitHub Actions 产物位置。
 - fixture 必须足够小，便于进 Git；如果 index 二进制不适合进 Git，则 workflow 在 CI 中生成。
 
@@ -137,8 +139,8 @@ packages/keepdb.wasm/
 
 ### P0：确认最小可行封装面
 
-- [ ] 明确首版只支持 `search(query_embedding)`，不支持 `search(query_text)`。
-- [ ] 明确首版只支持非 pruned HNSW index，避免 ZMQ recompute 阻塞。
+- [x] 明确内核支持 `search(query_embedding)`，并由 ES6 wrapper 的可配置 `embeddingProvider` 提供 `searchText()`。
+- [x] 明确当前真实 HNSW 支持范围只包含非 compact、非 pruned index，避免 ZMQ recompute 阻塞。
 - [ ] 梳理 HNSW 搜索路径中真实需要的 Faiss 类型与方法：
   - `read_index`
   - `IndexHNSWFlat` 或当前 fork 的 CSR reader
@@ -154,7 +156,7 @@ packages/keepdb.wasm/
 - [x] 新增 `packages/keepdb.wasm/scripts/build-wasm.sh`，编译真实 flat search WASM core。
 - [x] 新增 Node.js smoke test，验证 WASM 可以加载并完成一次 top-k 搜索。
 - [x] 上传 npm tarball artifact，其中包含 `dist/leann-wasm.wasm`。
-- [ ] 将 flat search core 替换为 LEANN HNSW index reader/searcher。
+- [x] 新增真实 LEANN HNSW index reader/searcher 路径；flat search 仅继续保留为 M0 toolchain 测试。
 
 ### P2：索引 fixture 与兼容性
 
@@ -178,10 +180,11 @@ packages/keepdb.wasm/
   - 当前测试：`pnpm --dir packages/keepdb.wasm test:e2e:bigmodel`。
   - 测试结果：预期 `top1=doc-wasm`，WASM 返回 `doc-wasm`。
   - 示例页：`packages/keepdb.wasm/demo/` 通过 `npx @keepdb/cli port` 启动静态预览，验证者在浏览器输入临时 BigModel API Key 后直连 `/embeddings`，本地预览进程不读取或转发 Key。
-- [ ] M3：支持 LEANN HNSW/Faiss 后端，不再局限 IVF `nlist=1` 最小 reader。
+- [x] M3 子集：支持 LEANN HNSW/Faiss 后端生成的 `non-compact/non-pruned` 索引，不再局限 IVF `nlist=1` 最小 reader。
   - M3 方案文档：`docs/设计/leann-wasm-m3-hnsw.md`。
   - 已实现 non-compact HNSW `IHNf` parser 与 WASM `leann_wasm_hnsw_search()` 调用路径。
-  - 未确认：GitHub Actions 能否成功构建 `leann_backend_hnsw.faiss` 原生扩展并产出真实 HNSW fixture。
+  - 已确认：GitHub Actions run `26465439258` 成功构建 `leann_backend_hnsw.faiss` 原生扩展，生成真实 HNSW fixture，并由真实 `.wasm` 返回 `top1=doc-wasm`。
+  - 范围边界：compact/pruned 索引与 selective recomputation 尚未实现，属于 M4。
 
 ### P3：扩展能力
 
@@ -192,13 +195,25 @@ packages/keepdb.wasm/
 - [x] 新增 HNSW WASM smoke：`pnpm --dir packages/keepdb.wasm test:hnsw-wasm`。
   - 本地 `wat2wasm` fallback 无 HNSW 导出时跳过。
   - CI Emscripten 构建必须导出 `leann_wasm_hnsw_search` 并通过合成 HNSW 查询。
-- [ ] 在 GitHub Actions 中确认 `packages/leann-backend-hnsw` 原生 wheel 可构建，并产出非 compact、非 pruned HNSW fixture。
-- [ ] 基于真实 HNSW fixture 实现 WASM HNSW graph search，而不是继续从索引中抽向量做 flat search。
+- [x] 在 GitHub Actions 中确认 `packages/leann-backend-hnsw` 原生扩展可构建，并产出非 compact、非 pruned HNSW fixture。
+- [x] 基于真实 HNSW fixture 实现 WASM HNSW graph search，而不是继续从索引中抽向量做 flat search。
 - [ ] 评估 compact/CSR HNSW 在无 recompute 情况下是否有价值。
 - [ ] 如果需要保留 selective recomputation，设计 JS callback 或外部 embedding provider API，替代当前 ZMQ server。
 - [ ] 评估 IVF/Faiss WASM 的体积、性能和构建复杂度。
 - [ ] 评估 Web Worker 运行搜索，避免阻塞浏览器主线程。
 - [ ] 评估 streaming/分片加载大索引，避免一次性加载超出浏览器内存。
+
+## M3 验证证据
+
+GitHub Actions 验证 run：
+
+- Run：[`26465439258`](https://github.com/keepdb/LEANN/actions/runs/26465439258)，作业 `Package @keepdb/leann-wasm M3 validation` 成功。
+- 构建产物：`keepdb-leann-wasm-binary`，包含 Emscripten 生成的真实 `dist/leann-wasm.wasm`。
+- 包产物：`keepdb-leann-wasm-package`，包含 `keepdb-leann-wasm-0.0.0-m3.tgz`。
+- 索引产物：`keepdb-leann-hnsw-fixture`，包含 `.meta.json`、`.index`、`.ids.txt`、`.passages.jsonl` 四个真实 HNSW fixture 文件。
+- 搜索断言：WASM 读取上述 HNSW fixture 后返回 `top1=doc-wasm`。
+
+该 run 中 BigModel 端到端步骤因为仓库未配置 `BIGMODEL_API_KEY` secret 而跳过。BigModel `embedding-3` 端到端链路已经在本地用 `packages/keepdb.wasm/.env` 执行 `pnpm --dir packages/keepdb.wasm test:e2e:bigmodel` 验证通过；Key 未写入索引 metadata。
 
 ## 暂不做
 
@@ -210,10 +225,15 @@ packages/keepdb.wasm/
 
 ## 验收标准
 
-第一阶段完成的定义：
+M3 `non-compact/non-pruned` HNSW 子集完成状态：
 
-- GitHub Actions 可以手动触发 WASM build。
-- CI 产出可下载的 WASM bundle。
-- Node.js smoke test 通过。
-- README 说明最小 API、限制和示例调用。
-- 本机无需安装 Emscripten、CMake、Ninja 或其他 WASM 打包环境。
+- [x] GitHub Actions 可以手动触发 WASM build。
+- [x] CI 产出可下载的真实 WASM bundle。
+- [x] Node.js smoke test 与真实 HNSW fixture 查询通过。
+- [x] README 说明最小 API、限制和示例调用。
+- [x] 本机无需安装 Emscripten、CMake、Ninja 或其他 WASM 打包环境。
+
+M4 尚未完成的验收内容：
+
+- [ ] 读取 compact/pruned HNSW index。
+- [ ] 用 JS callback 或 provider adapter 替换浏览器不能复用的 ZMQ recompute 路径。

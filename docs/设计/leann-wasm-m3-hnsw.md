@@ -4,10 +4,12 @@
 
 ## 当前结论
 
-M3 还未完成。当前已经完成的是 M3 的前两道可执行闸门：
+M3 的 `non-compact/non-pruned` HNSW 子集已完成真实验证。GitHub Actions run [`26465439258`](https://github.com/keepdb/LEANN/actions/runs/26465439258) 在 2026-05-27 完成以下链路：
 
-1. 确认能否在 CI 中生成真实 LEANN HNSW fixture。
-2. 接入 non-compact HNSW parser 与 WASM HNSW search 调用路径，等待 CI 真实 fixture 验证。
+1. 用 Emscripten 构建真实 `dist/leann-wasm.wasm`。
+2. 构建 `leann_backend_hnsw.faiss` 原生扩展，并生成 LEANN HNSW 四文件 fixture。
+3. 通过 `loadLeannIndex()` 读取真实 `.meta.json`、`.index`、`.ids.txt`、`.passages.jsonl`。
+4. 在 WASM 中运行 `leann_wasm_hnsw_search()` 图遍历查询，得到 `top1=doc-wasm`。
 
 本机探针结果是：
 
@@ -16,6 +18,8 @@ missing-hnsw-native-extension
 ```
 
 原因是本机没有 `leann_backend_hnsw.faiss` 原生扩展。按照用户约束，本机不安装 HNSW/Faiss 打包环境，因此 HNSW fixture 生成必须放到 GitHub Actions。
+
+该结论仅覆盖非 compact、非 pruned 的全量向量 HNSW 路径。compact/pruned index 和依赖 selective recomputation 的 ZMQ 替代方案仍属于 M4，不能声称完整 LEANN WASM 已封装完成。
 
 ## M3 验收目标
 
@@ -33,7 +37,7 @@ M3 不能继续把 IVF `.index` 中的 vectors 抽出来交给 flat search。M3 
    - embedded `IndexFlat` storage
    - `.ids.txt`
 3. WASM 中执行 HNSW graph traversal search。
-4. 与 Python `HNSWSearcher(..., recompute_embeddings=false)` 对同一个 query embedding 的 topK 做一致性对比。
+4. 对固定 query embedding 断言已知 topK；增加与 Python `HNSWSearcher(..., recompute_embeddings=false)` 的通用 topK 一致性矩阵作为后续强化验证。
 
 ## 为什么先选 non-compact / non-pruned HNSW
 
@@ -73,7 +77,7 @@ LEANN_WASM_REQUIRE_HNSW=1 pnpm --dir packages/keepdb.wasm test:hnsw-capability
 
 CI 中该命令必须真正生成 HNSW fixture，否则失败。
 
-如果 CI 成功生成 HNSW fixture，`test:hnsw-capability` 会继续执行：
+Actions run `26465439258` 中，`test:hnsw-capability` 已执行：
 
 1. 读取真实 HNSW `.meta.json`、`.index`、`.ids.txt`、`.passages.jsonl`。
 2. 通过 `loadLeannIndex()` 加载 HNSW graph 和 storage。
@@ -104,7 +108,15 @@ Actions 成功后上传：
 - `keepdb-leann-wasm-binary`
 - `keepdb-leann-hnsw-fixture`
 
-## 下一步实现
+实际 run `26465439258` 已上传上述三类 artifact：
+
+- `keepdb-leann-wasm-binary`：真实 `dist/leann-wasm.wasm`。
+- `keepdb-leann-wasm-package`：`keepdb-leann-wasm-0.0.0-m3.tgz`。
+- `keepdb-leann-hnsw-fixture`：真实 HNSW `.meta.json`、`.index`、`.ids.txt`、`.passages.jsonl`。
+
+该 run 中 BigModel E2E 因仓库没有配置 `BIGMODEL_API_KEY` secret 而跳过；本地使用 `.env` 的 `pnpm --dir packages/keepdb.wasm test:e2e:bigmodel` 已验证 `embedding-3` 链路。
+
+## 已实现路径
 
 M3 的代码实现分两段：
 
@@ -142,7 +154,7 @@ int leann_wasm_hnsw_search(
 );
 ```
 
-这个函数执行 HNSW traversal，而不是遍历全量 vectors。当前本地 `wat2wasm` fallback 仍只覆盖 flat search；HNSW search 需要 GitHub Actions 中的 Emscripten 构建产物验证。`pnpm --dir packages/keepdb.wasm test:hnsw-wasm` 会在 `.wasm` 导出 `leann_wasm_hnsw_search` 时验证合成 HNSW 查询。
+这个函数执行 HNSW traversal，而不是遍历全量 vectors。当前本地 `wat2wasm` fallback 仍只覆盖 flat search；Actions run `26465439258` 的 Emscripten 产物已验证 `leann_wasm_hnsw_search` 可加载合成 HNSW，并可查询真实 LEANN HNSW fixture。
 
 ## M4 延后项
 

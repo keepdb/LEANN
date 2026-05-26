@@ -2,7 +2,7 @@
 
 面向浏览器、Node.js 和边缘运行时的 LEANN 只读向量搜索 WASM 包。
 
-> 状态：设计稿。本文档描述目标 npm 包的最终使用方式，不代表当前仓库已经完成实现。
+> 状态：预生成的包使用文档，并同步当前验证进展。M1/M2 已验证；M3 的 `non-compact/non-pruned` HNSW 子集已由 [GitHub Actions run `26465439258`](https://github.com/keepdb/LEANN/actions/runs/26465439258) 验证，compact/pruned 与 recompute adapter 仍未完成。
 
 ## 目标
 
@@ -171,7 +171,7 @@ import {
 
 - 不计算文本 embedding。
 - 不运行 `torch`、`sentence-transformers`、`transformers`、MLX 或 Ollama。
-- 不调用 OpenAI、Hugging Face 或其他远程模型服务。
+- WASM 搜索内核不调用 OpenAI、Hugging Face 或其他远程模型服务；ES6 wrapper 可通过显式传入的 `embeddingProvider` 调用 BigModel 等兼容服务。
 - 不构建索引。
 - 不执行文本切分。
 - 不启动 Python。
@@ -450,20 +450,22 @@ WASM 包只需要 `demo.index` 和 `demo.ids.txt` 完成搜索。应用如果需
 
 本包的 WASM 构建不要求用户本机安装 Emscripten、CMake 或 Ninja。官方构建通过 GitHub Actions 执行。
 
-目标 workflow：
+当前 workflow：
 
 ```text
-.github/workflows/wasm.yml
+.github/workflows/keepdb-wasm.yml
 ```
 
 构建步骤：
 
 1. checkout 源码和 submodules。
 2. 安装 Emscripten SDK。
-3. 编译最小 HNSW search wrapper。
-4. 生成 `dist/leann-wasm.wasm` 和 `dist/leann-wasm.mjs`。
-5. 使用 Node.js 运行 smoke test。
-6. 上传 npm package artifact。
+3. 编译带有 HNSW search 导出的 `dist/leann-wasm.wasm`。
+4. 构建 LEANN HNSW native extension 并生成真实 `non-compact/non-pruned` fixture。
+5. 使用 Node.js 运行 WASM、parser 和真实 HNSW fixture smoke tests。
+6. 上传真实 `.wasm`、npm tarball 和 HNSW fixture artifacts。
+
+run `26465439258` 已完成上述流程，真实 HNSW fixture 查询返回 `top1=doc-wasm`。该 run 的 BigModel `embedding-3` E2E 因仓库没有配置 `BIGMODEL_API_KEY` secret 而跳过；本地 `.env` 链路已验证通过。
 
 ## 限制
 
@@ -484,12 +486,12 @@ WASM 包只需要 `demo.index` 和 `demo.ids.txt` 完成搜索。应用如果需
 
 ## 路线图
 
-### v0.1
+### v0.1 / M3 已验证子集
 
-- HNSW 非 pruned index 只读搜索。
-- ES6 wrapper。
-- Node.js smoke test。
-- GitHub Actions artifact。
+- [x] HNSW 非 compact、非 pruned index 只读搜索。
+- [x] ES6 wrapper。
+- [x] Node.js smoke test。
+- [x] GitHub Actions `.wasm`、npm tarball 和真实 HNSW fixture artifact。
 
 ### v0.2
 
@@ -498,11 +500,11 @@ WASM 包只需要 `demo.index` 和 `demo.ids.txt` 完成搜索。应用如果需
 - 更完整的错误码和维度校验。
 - 小型 fixture index。
 
-### v0.3
+### v0.3 / M4
 
-- 评估 compact/CSR HNSW 兼容。
-- 评估 streaming 或分片加载。
-- 评估 JS callback 形式的 selective recomputation。
+- [ ] 评估 compact/CSR HNSW 兼容。
+- [ ] 评估 streaming 或分片加载。
+- [ ] 设计 JS callback/provider adapter 形式的 selective recomputation，替代浏览器不能直接复用的 ZMQ server。
 
 ## License
 
