@@ -1,6 +1,9 @@
 import json
 import os
+import pickle
 import sys
+import types
+from importlib import util as importlib_util
 from pathlib import Path
 
 import numpy as np
@@ -34,17 +37,8 @@ def main() -> int:
     if backend == "ivf":
         import leann_backend_ivf  # noqa: F401
     elif backend == "hnsw":
-        import leann_backend_hnsw  # noqa: F401
-
-        try:
-            from leann_backend_hnsw import faiss as _hnsw_faiss  # noqa: F401
-        except ImportError as exc:
-            raise RuntimeError(
-                "LEANN_WASM_E2E_BACKEND=hnsw requires the native "
-                "leann_backend_hnsw.faiss extension. This is expected on local "
-                "machines without the LEANN HNSW build toolchain; run the M3 "
-                "fixture/build job in GitHub Actions instead."
-            ) from exc
+        build_hnsw_index_from_arrays(output_dir, index_name, docs, ids, embeddings)
+        return 0
     else:
         raise ValueError(f"Unsupported LEANN_WASM_E2E_BACKEND={backend!r}")
 
@@ -66,7 +60,6 @@ def main() -> int:
         dimensions=dimensions,
         embedding_options={
             "base_url": os.getenv("BIGMODEL_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
-            "api_key": os.getenv("BIGMODEL_API_KEY", ""),
         },
         **backend_kwargs,
     )
@@ -88,6 +81,136 @@ def main() -> int:
 
     print(json.dumps({"index_path": str(index_path), "artifacts": artifact_names}, indent=2))
     return 0
+
+
+def build_hnsw_index_from_arrays(
+    output_dir: Path,
+    index_name: str,
+    docs: list[dict],
+    ids: list[str],
+    embeddings: np.ndarray,
+) -> None:
+    faiss = load_hnsw_faiss_extension()
+    dimensions = int(embeddings.shape[1])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    index_path = output_dir / index_name
+    index_stem = Path(index_name).stem
+    passages_file = output_dir / f"{index_name}.passages.jsonl"
+    offset_file = output_dir / f"{index_name}.passages.idx"
+    idmap_file = output_dir / f"{index_stem}.ids.txt"
+    index_file = output_dir / f"{index_stem}.index"
+    meta_file = output_dir / f"{index_name}.meta.json"
+
+    offset_map = {}
+    with open(passages_file, "w", encoding="utf-8") as f:
+        for doc in docs:
+            offset = f.tell()
+            metadata = {"id": doc["id"], "source": "bigmodel-e2e"}
+            json.dump(
+                {"id": doc["id"], "text": doc["text"], "metadata": metadata},
+                f,
+                ensure_ascii=False,
+            )
+            f.write("\n")
+            offset_map[doc["id"]] = offset
+
+    with open(offset_file, "wb") as f:
+        pickle.dump(offset_map, f)
+
+    with open(idmap_file, "w", encoding="utf-8") as f:
+        for id_value in ids:
+            f.write(str(id_value) + "\n")
+
+    data = embeddings.astype(np.float32, copy=True)
+    norms = np.linalg.norm(data, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    data = data / norms
+
+    metric = faiss.METRIC_INNER_PRODUCT
+    index = faiss.IndexHNSWFlat(dimensions, int(os.getenv("LEANN_WASM_E2E_HNSW_M", "8")), metric)
+    index.hnsw.efConstruction = int(os.getenv("LEANN_WASM_E2E_HNSW_EF_CONSTRUCTION", "40"))
+    index.add(data.shape[0], faiss.swig_ptr(data))
+    faiss.write_index(index, str(index_file))
+
+    backend_kwargs = {
+        "distance_metric": "cosine",
+        "is_recompute": False,
+        "is_compact": False,
+        "M": int(os.getenv("LEANN_WASM_E2E_HNSW_M", "8")),
+    }
+    meta_data = {
+        "version": "1.0",
+        "backend_name": "hnsw",
+        "embedding_model": os.getenv("BIGMODEL_EMBEDDING_MODEL", "embedding-3"),
+        "dimensions": dimensions,
+        "backend_kwargs": backend_kwargs,
+        "embedding_mode": "openai",
+        "passage_sources": [
+            {
+                "type": "jsonl",
+                "path": passages_file.name,
+                "index_path": offset_file.name,
+                "path_relative": passages_file.name,
+                "index_path_relative": offset_file.name,
+            }
+        ],
+        "built_from_precomputed_embeddings": True,
+        "embedding_options": {
+            "base_url": os.getenv("BIGMODEL_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
+        },
+        "is_compact": False,
+        "is_pruned": False,
+    }
+
+    with open(meta_file, "w", encoding="utf-8") as f:
+        json.dump(meta_data, f, indent=2)
+
+    artifact_names = [
+        f"{index_name}.meta.json",
+        f"{index_stem}.index",
+        f"{index_stem}.ids.txt",
+        f"{index_name}.passages.jsonl",
+    ]
+    missing = [name for name in artifact_names if not (output_dir / name).exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing expected LEANN artifacts: {missing}")
+
+    print(json.dumps({"index_path": str(index_path), "artifacts": artifact_names}, indent=2))
+
+
+def load_hnsw_faiss_extension():
+    candidate_paths = []
+    repo_root = Path(__file__).resolve().parents[3]
+    search_roots = [
+        repo_root / "packages" / "leann-backend-hnsw" / "leann_backend_hnsw",
+        *[Path(entry) / "leann_backend_hnsw" for entry in sys.path if entry],
+    ]
+    for root in search_roots:
+        if root.exists():
+            candidate_paths.extend(root.glob("faiss*.so"))
+            candidate_paths.extend(root.glob("faiss*.pyd"))
+
+    if not candidate_paths:
+        raise RuntimeError(
+            "LEANN_WASM_E2E_BACKEND=hnsw requires the native "
+            "leann_backend_hnsw.faiss extension. This is expected on local "
+            "machines without the LEANN HNSW build toolchain; run the M3 "
+            "fixture/build job in GitHub Actions instead."
+        )
+
+    extension_path = candidate_paths[0]
+    package = types.ModuleType("leann_backend_hnsw")
+    package.__path__ = [str(extension_path.parent)]
+    sys.modules.setdefault("leann_backend_hnsw", package)
+
+    spec = importlib_util.spec_from_file_location("leann_backend_hnsw.faiss", extension_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load HNSW Faiss extension from {extension_path}")
+    module = importlib_util.module_from_spec(spec)
+    sys.modules["leann_backend_hnsw.faiss"] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 if __name__ == "__main__":
